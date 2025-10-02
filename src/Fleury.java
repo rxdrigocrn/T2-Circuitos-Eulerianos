@@ -1,25 +1,22 @@
-
 import edu.princeton.cs.algs4.Graph;
-import edu.princeton.cs.algs4.Queue;
+import edu.princeton.cs.algs4.Stack;
 import edu.princeton.cs.algs4.StdOut;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Fleury {
 
-    private Queue<Integer> tour;
+    private Stack<Integer> tour;       // acumula o circuito (ordem correta)
     private boolean isEulerian;
+    private List<Integer>[] adj;       // cópia mutável das adjacências
 
-    // Lista de adjacência mutável
-    private List<Integer>[] adj;
-
+    @SuppressWarnings("unchecked")
     public Fleury(Graph G) {
         if (!isGraphConnected(G)) {
             StdOut.println("Fleury: Grafo não é Euleriano -> não é conexo (ignorando vértices isolados).");
             this.isEulerian = false;
             return;
         }
-
         if (!areAllDegreesEven(G)) {
             StdOut.println("Fleury: Grafo não é Euleriano -> algum vértice possui grau ímpar.");
             this.isEulerian = false;
@@ -27,10 +24,10 @@ public class Fleury {
         }
 
         this.isEulerian = true;
-        this.tour = new Queue<>();
+        this.tour = new Stack<>();
 
-        // Criar cópia mutável
-        adj = new ArrayList[G.V()];
+        // criar cópia mutável
+        adj = (ArrayList<Integer>[]) new ArrayList[G.V()];
         for (int v = 0; v < G.V(); v++) {
             adj[v] = new ArrayList<>();
             for (int w : G.adj(v)) {
@@ -39,7 +36,7 @@ public class Fleury {
         }
 
         int start = findStartVertex(G);
-        dfsFleury(start);
+        if (start != -1) buildFleury(start);
     }
 
     public boolean hasEulerianCircuit() {
@@ -50,45 +47,42 @@ public class Fleury {
         return tour;
     }
 
-    // ---------------- Fleury ----------------
-    private void dfsFleury(int u) {
+    // Construção recursiva/iterativa do circuito
+    private void buildFleury(int u) {
         while (!adj[u].isEmpty()) {
-            int v = adj[u].get(0); // pega primeira aresta
-            if (adj[u].size() == 1 || !isBridge(u, v)) {
-                removeEdge(u, v);
-                dfsFleury(v);
-            } else {
-                // se for ponte, pula pra outra aresta (se houver)
-                adj[u].remove(Integer.valueOf(v));
-                adj[v].remove(Integer.valueOf(u));
+            // procurar alguma aresta (u,v) que NÃO seja ponte, se possível
+            int next = -1;
+            for (int v : new ArrayList<>(adj[u])) { // itera sobre uma cópia para evitar concurrent-mod
+                if (adj[u].size() == 1 || !isBridge(u, v)) {
+                    next = v;
+                    break;
+                }
             }
+            if (next == -1) {
+                // se não encontrou (raro), pega a primeira
+                next = adj[u].get(0);
+            }
+            removeEdge(u, next);
+            buildFleury(next);
         }
-        tour.enqueue(u);
+        // ao voltar da recursão empilha o vértice (resulta em ordem correta ao iterar a pilha)
+        tour.push(u);
     }
 
-    // ---------------- Auxiliares ----------------
+    // ---------------- auxiliares ----------------
+
     private boolean areAllDegreesEven(Graph G) {
-        for (int v = 0; v < G.V(); v++) {
-            if (G.degree(v) % 2 != 0) {
-                return false;
-            }
-        }
+        for (int v = 0; v < G.V(); v++) if (G.degree(v) % 2 != 0) return false;
         return true;
     }
 
     private boolean isGraphConnected(Graph G) {
         int start = findStartVertex(G);
-        if (start == -1) {
-            return true;
-        }
-
+        if (start == -1) return true;
         boolean[] visited = new boolean[G.V()];
         dfsVisit(G, start, visited);
-
         for (int v = 0; v < G.V(); v++) {
-            if (G.degree(v) > 0 && !visited[v]) {
-                return false;
-            }
+            if (G.degree(v) > 0 && !visited[v]) return false;
         }
         return true;
     }
@@ -96,18 +90,12 @@ public class Fleury {
     private void dfsVisit(Graph G, int u, boolean[] visited) {
         visited[u] = true;
         for (int v : G.adj(u)) {
-            if (!visited[v]) {
-                dfsVisit(G, v, visited);
-            }
+            if (!visited[v]) dfsVisit(G, v, visited);
         }
     }
 
     private int findStartVertex(Graph G) {
-        for (int v = 0; v < G.V(); v++) {
-            if (G.degree(v) > 0) {
-                return v;
-            }
-        }
+        for (int v = 0; v < G.V(); v++) if (G.degree(v) > 0) return v;
         return -1;
     }
 
@@ -116,39 +104,31 @@ public class Fleury {
         adj[v].remove(Integer.valueOf(u));
     }
 
-    private boolean isBridge(int u, int v) {
-        int before = countReachable(u);
-
-        removeEdge(u, v);
-        int after = countReachable(u);
-        addEdge(u, v);
-
-        return after < before;
-    }
-
     private void addEdge(int u, int v) {
         adj[u].add(v);
         adj[v].add(u);
     }
 
+    private boolean isBridge(int u, int v) {
+        int before = countReachable(u);
+        removeEdge(u, v);
+        int after = countReachable(u);
+        addEdge(u, v);
+        return after < before;
+    }
+
     private int countReachable(int start) {
         boolean[] visited = new boolean[adj.length];
         dfsMutable(start, visited);
-        int count = 0;
-        for (boolean b : visited) {
-            if (b) {
-                count++;
-            }
-        }
-        return count;
+        int cnt = 0;
+        for (boolean b : visited) if (b) cnt++;
+        return cnt;
     }
 
     private void dfsMutable(int u, boolean[] visited) {
         visited[u] = true;
         for (int v : adj[u]) {
-            if (!visited[v]) {
-                dfsMutable(v, visited);
-            }
+            if (!visited[v]) dfsMutable(v, visited);
         }
     }
 }
